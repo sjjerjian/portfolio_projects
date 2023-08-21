@@ -67,14 +67,50 @@ GROUP BY order_date
 */
 --6. For each pizza category, what is the most popular pizza size based on the total quantity ordered?
 
+/* This was a step up, and I had to learn about partitioning
+The row number and partition creates a group for each category containing the total order quantity for each size, and numbers the rows
+this query returns a table called ranked_pizzas, from which I then select the first row. Since we ordered by descending sum(quantity)
+
+*/
+
+
+WITH ranked_pizzas AS (
+	SELECT 
+		pizza_types.category,
+		pizza_size,
+		SUM(order_details.quantity) as total_q,
+		ROW_NUMBER() OVER(PARTITION BY pizza_types.category ORDER BY SUM(order_details.quantity) DESC) AS row_num 
+		FROM pizzas
+	JOIN order_details ON order_details.pizza_id = pizzas.pizza_id
+	JOIN pizza_types ON pizza_types.pizza_type_id = pizzas.pizza_type_id
+	GROUP BY pizza_types.category, pizza_size
+)
+SELECT category, pizza_size, total_q FROM ranked_pizzas
+WHERE row_num = 1;
+
+
 --7. Identify the top 3 pizza types that have the highest average order quantity.
 
 --8. List the pizza types that include "Mushrooms" as an ingredient and the number of times they've been ordered.
+SELECT pizza_types.pizza_name, SUM(quantity) as total_times_ordered FROM order_details
+JOIN pizzas ON pizzas.pizza_id = order_details.pizza_id
+JOIN pizza_types ON pizza_types.pizza_type_id = pizzas.pizza_type_id
+WHERE pizza_types.ingredients LIKE '%Mushroom%'
+GROUP BY pizza_types.pizza_name;
 
 --9. Find the average number of pizzas ordered per order for each pizza category.
+SELECT pizza_types.category, CAST(AVG(order_details.quantity) AS DECIMAL(4,3)) FROM order_details
+JOIN pizzas ON pizzas.pizza_id = order_details.pizza_id
+JOIN pizza_types ON pizza_types.pizza_type_id = pizzas.pizza_type_id
+GROUP BY pizza_types.category;
 
 --10. Identify the pizza type that has the highest revenue generated and the corresponding pizza category.
-
+SELECT pizza_types.pizza_name, pizza_types.category, SUM(order_details.quantity*pizzas.price) as total_revenue FROM order_details
+JOIN pizzas ON pizzas.pizza_id = order_details.pizza_id
+JOIN pizza_types ON pizza_types.pizza_type_id = pizzas.pizza_type_id
+GROUP BY pizza_types.pizza_name, pizza_types.category
+ORDER BY total_revenue DESC
+LIMIT 1;
 
 /* Hard:
 */
