@@ -67,12 +67,22 @@ GROUP BY order_date
 */
 --6. For each pizza category, what is the most popular pizza size based on the total quantity ordered?
 
-/* This was a step up, and I had to learn about partitioning
+/* Initially I solved this simply by grouping by category and size, then ordering by total order quantity. This finds the answer,
+namely that small is the most popular size for classic, with large the most popular for the other three. But our returned table 
+also includes all the other sizes listed below.
+*/
+SELECT pizza_types.category, pizza_size, SUM(order_details.quantity) as total_q
+	FROM pizzas
+	JOIN order_details ON order_details.pizza_id = pizzas.pizza_id
+	JOIN pizza_types ON pizza_types.pizza_type_id = pizzas.pizza_type_id
+	GROUP BY pizza_types.category, pizza_size
+	ORDER BY total_q DESC;
+/* 
+This was a step up, and I had to learn about partitioning
 The row number and partition creates a group for each category containing the total order quantity for each size, and numbers the rows
 this query returns a table called ranked_pizzas, from which I then select the first row. Since we ordered by descending sum(quantity)
 
 */
-
 
 WITH ranked_pizzas AS (
 	SELECT 
@@ -89,7 +99,16 @@ SELECT category, pizza_size, total_q FROM ranked_pizzas
 WHERE row_num = 1;
 
 
---7. Identify the top 3 pizza types that have the highest average order quantity.
+--7. Identify the top 3 pizza types that have the highest total order quantity.
+SELECT
+	pizza_types.pizza_name,
+	SUM(quantity) as total_times_ordered
+FROM order_details
+JOIN pizzas ON pizzas.pizza_id = order_details.pizza_id
+JOIN pizza_types ON pizza_types.pizza_type_id = pizzas.pizza_type_id
+GROUP BY pizza_types.pizza_name
+ORDER BY total_times_ordered DESC
+LIMIT 3;
 
 --8. List the pizza types that include "Mushrooms" as an ingredient and the number of times they've been ordered.
 SELECT pizza_types.pizza_name, SUM(quantity) as total_times_ordered FROM order_details
@@ -115,14 +134,76 @@ LIMIT 1;
 /* Hard:
 */
 --11. Determine the month with the highest revenue and the top 3 pizza types sold in that month.
+WITH monthly_revenue AS (
+	SELECT
+		EXTRACT(MONTH FROM o.order_date) AS month,
+		SUM(od.quantity * p.price) AS total_revenue
+	FROM order_details AS od
+	JOIN orders AS o ON o.order_id = od.order_id
+	JOIN pizzas AS p ON p.pizza_id = od.pizza_id
+	GROUP BY month
+	ORDER BY total_revenue DESC
+	LIMIT 1
+),
+
+top_pizzas AS (
+    SELECT
+        EXTRACT(MONTH FROM o.order_date) AS month,
+        pt.pizza_name,
+        SUM(od.quantity * p.price) AS pizza_revenue
+    FROM order_details AS od
+    JOIN orders AS o ON o.order_id = od.order_id
+    JOIN pizzas AS p ON p.pizza_id = od.pizza_id
+	JOIN pizza_types AS pt ON pt.pizza_type_id = p.pizza_type_id
+    GROUP BY month, pt.pizza_name
+    HAVING EXTRACT(MONTH FROM o.order_date) = (SELECT month FROM monthly_revenue)
+    ORDER BY pizza_revenue DESC
+    LIMIT 3
+)
+
+SELECT * FROM top_pizzas
+
 
 --12. Calculate the cumulative revenue for each month, considering the revenue is accumulated from the start of the year.
+WITH monthly_revenue AS (
+	SELECT
+    	EXTRACT(MONTH FROM o.order_date) AS month,
+    	SUM(od.quantity * p.price) AS total_revenue
+	FROM order_details AS od
+	JOIN orders AS o ON o.order_id = od.order_id
+	JOIN pizzas AS p ON p.pizza_id = od.pizza_id
+	GROUP BY month
+	ORDER BY month
+	)
+SELECT
+	month,
+	SUM(total_revenue) OVER (ORDER BY month) as cumulative_revenue
+FROM monthly_revenue
 
---13. Identify the top 5 customers who have ordered the most pizzas, including the quantity and total spent.
 
---14. Calculate the percentage contribution of each pizza type to the total revenue.
+--13. Calculate the percentage contribution of each pizza type to the total revenue.
+WITH pizzas_revenue AS (
+	SELECT
+		pt.pizza_name,
+    	SUM(od.quantity * p.price) AS revenue
+	FROM order_details AS od
+	JOIN orders AS o ON o.order_id = od.order_id
+	JOIN pizzas AS p ON p.pizza_id = od.pizza_id
+	JOIN pizza_types AS pt on pt.pizza_type_id = p.pizza_type_id
+	GROUP BY pt.pizza_name
+),
+total_revenue AS (
+    SELECT SUM(revenue) AS total FROM pizzas_revenue
+)
+SELECT
+    pr.pizza_name,
+    CAST(pr.revenue / tr.total AS DECIMAL(4,3)) AS percent_revenue
+FROM pizzas_revenue AS pr
+CROSS JOIN total_revenue AS tr
+ORDER BY percent_revenue DESC;
 
---15. List the pizza types that have shown an increasing trend in the number of orders over the past 3 months.
+
+--14. List the pizza types that have shown an increasing trend in the number of orders over the past 3 months.
 
 
 /* 
